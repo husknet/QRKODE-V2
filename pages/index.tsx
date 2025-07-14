@@ -21,29 +21,31 @@ export default function Home({ defaultLogoDataUri }: Props) {
   const [url, setUrl] = useState('')
   const [template, setTemplate] = useState('Document')
   const [logoUrl, setLogoUrl] = useState('')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [localLogoDataUri, setLocalLogoDataUri] = useState('')
   const [html, setHtml] = useState('')
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle')
 
   const templateConfig: Record<string, { header: string; cta: string }> = {
     Document: {
       header: 'Your document is ready to review and sign',
-      cta: 'Scan the QR Code to view or sign the shared document.'
+      cta: 'Scan the QR Code below to view or sign the shared document.'
     },
     Contract: {
       header: 'Your contract is ready to review and sign',
-      cta: 'Scan the QR Code to view or sign the contract.'
+      cta: 'Scan the QR Code below to view or sign the contract.'
     },
     Invoice: {
       header: 'Your invoice is ready to view and pay',
-      cta: 'Scan the QR Code to view or pay the invoice.'
+      cta: 'Scan the QR Code below to view or pay the invoice.'
     },
     Statement: {
       header: 'Your statement is ready to view',
-      cta: 'Scan the QR Code to view your statement.'
+      cta: 'Scan the QR Code below to view your statement.'
     },
     Payment: {
-      header: 'Your payment is ready to process',
-      cta: 'Scan the QR Code to process your payment.'
+      header: 'Payment Notification: Your payment details are ready',
+      cta: 'Scan the QR Code below to review and confirm all invoices included in this payment.'
     }
   }
 
@@ -56,6 +58,16 @@ export default function Home({ defaultLogoDataUri }: Props) {
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoFile(file)
+    setLogoUrl('')
+    const reader = new FileReader()
+    reader.onloadend = () => setLocalLogoDataUri(reader.result as string)
+    reader.readAsDataURL(file)
   }
 
   const buildEmailHtml = (qrDataUri: string, logoToUse: string | null) => {
@@ -103,16 +115,16 @@ export default function Home({ defaultLogoDataUri }: Props) {
     if (!url) return alert('Please paste a URL first.')
     try {
       let customLogoDataUri: string | null = null
-      if (logoUrl) {
+      if (localLogoDataUri) {
+        customLogoDataUri = localLogoDataUri
+      } else if (logoUrl) {
         try {
           customLogoDataUri = await fetchLogoDataUri(logoUrl)
         } catch {
-          alert('Failed to fetch provided logo. Falling back to template default.')
+          alert('Failed to fetch provided logo URL. Falling back to defaults.')
         }
       }
-      const logoToUse =
-        customLogoDataUri ||
-        (template === 'Document' ? defaultLogoDataUri : null)
+      const logoToUse = customLogoDataUri || (template === 'Document' ? defaultLogoDataUri : null)
 
       const qrDataUri = await QRCode.toDataURL(url, {
         width: 200,
@@ -136,53 +148,121 @@ export default function Home({ defaultLogoDataUri }: Props) {
 
   return (
     <>
-      <Head><title>QR Code Email Template Generator</title></Head>
-      <main style={{ padding: '2rem', fontFamily: 'Arial, sans-serif' }}>
-        <h1>QR Code Email Template Generator</h1>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '.5rem' }}>Template:</label>
-          <select value={template} onChange={(e) => setTemplate(e.target.value)} style={{ padding: '.5rem', fontSize: '1rem' }}>
-            <option>Document</option>
-            <option>Contract</option>
-            <option>Invoice</option>
-            <option>Statement</option>
-            <option>Payment</option>
-          </select>
+      <Head>
+        <title>QR Code Email Template Generator</title>
+      </Head>
+      <main
+        style={{
+          fontFamily: 'Arial, sans-serif',
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '2rem'
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#000',
+            color: '#005eb8',
+            borderRadius: 8,
+            padding: '2rem',
+            maxWidth: 600,
+            width: '100%'
+          }}
+        >
+          <h1 style={{ marginBottom: '1rem' }}>QR Code Email Template Generator</h1>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontWeight: 'bold' }}>Template:</label>
+            <select
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+              style={{ width: '100%', padding: '.5rem', fontSize: '1rem' }}
+            >
+              <option>Document</option>
+              <option>Contract</option>
+              <option>Invoice</option>
+              <option>Statement</option>
+              <option>Payment</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontWeight: 'bold' }}>Logo Upload (PNG/JPG):</label>
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={handleFileChange}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontWeight: 'bold' }}>Or Logo URL (optional):</label>
+            <input
+              type="text"
+              placeholder="https://example.com/logo.png or .jpg"
+              value={logoUrl}
+              onChange={(e) => {
+                setLogoUrl(e.target.value)
+                setLogoFile(null)
+                setLocalLogoDataUri('')
+              }}
+              style={{ width: '100%', padding: '.5rem', fontSize: '1rem' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontWeight: 'bold' }}>URL to Encode:</label>  
+            <input
+              type="text"
+              placeholder="https://yourlink.com"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              style={{ width: '100%', padding: '.5rem', fontSize: '1rem' }}
+            />
+          </div>
+
+          <button
+            onClick={handleGenerate}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              fontSize: '1rem',
+              backgroundColor: '#005eb8',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4
+            }}
+          >
+            Generate Email HTML
+          </button>
+
+          {html && (
+            <>
+              <div style={{ marginTop: '1rem' }}>
+                <button
+                  onClick={handleCopy}
+                  style={{
+                    width: '100%',
+                    padding: '.75rem',
+                    fontSize: '.9rem',
+                    backgroundColor: copyStatus === 'copied' ? '#28a745' : '#005eb8',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 4
+                  }}
+                >
+                  {copyStatus === 'copied' ? 'Copied!' : 'Copy HTML'}
+                </button>
+              </div>
+              <h2 style={{ margin: '1.5rem 0 0.5rem' }}>👀 Live Preview:</h2>
+              <div
+                style={{ border: '1px solid #ddd', borderRadius: 4 }}
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            </>
+          )}
         </div>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '.5rem' }}>Company Logo URL (optional):</label>
-          <input
-            type="text"
-            placeholder="https://example.com/logo.png"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            style={{ width: '100%', padding: '.5rem', fontSize: '1rem' }}
-          />
-        </div>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '.5rem' }}>URL to Encode:</label>
-          <input
-            type="text"
-            placeholder="https://yourlink.com"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            style={{ width: '100%', padding: '.5rem', fontSize: '1rem' }}
-          />
-        </div>
-        <button onClick={handleGenerate} style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', backgroundColor: '#005eb8', color: '#fff', border: 'none', borderRadius: 4 }}>
-          Generate Email HTML
-        </button>
-        {html && (
-          <>
-            <div style={{ marginTop: '1rem' }}>
-              <button onClick={handleCopy} style={{ padding: '.5rem 1rem', fontSize: '.85rem', backgroundColor: copyStatus === 'copied' ? '#28a745' : '#005eb8', color: '#fff', border: 'none', borderRadius: 4 }}>
-                {copyStatus === 'copied' ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-            <h2 style={{ marginTop: '2rem' }}>👀 Live Preview:</h2>
-            <div style={{ margin: '1rem 0' }} dangerouslySetInnerHTML={{ __html: html }} />
-          </>
-        )}
       </main>
     </>
   )
