@@ -21,7 +21,6 @@ export default function Home({ defaultLogoDataUri }: Props) {
   const [url, setUrl] = useState('')
   const [template, setTemplate] = useState('Document')
   const [logoUrl, setLogoUrl] = useState('')
-  const [logoFile, setLogoFile] = useState<File | null>(null)
   const [localLogoDataUri, setLocalLogoDataUri] = useState('')
   const [html, setHtml] = useState('')
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle')
@@ -63,15 +62,29 @@ export default function Home({ defaultLogoDataUri }: Props) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setLogoFile(file)
-    setLogoUrl('')
+    setLogoUrl('') // clear URL input
     const reader = new FileReader()
     reader.onloadend = () => setLocalLogoDataUri(reader.result as string)
     reader.readAsDataURL(file)
   }
 
-  const buildEmailHtml = (qrDataUri: string, logoToUse: string | null) => {
+  const buildEmailHtml = (qrDataUri: string, logos: string[]) => {
     const config = templateConfig[template] || templateConfig.Document
+
+    // build one row with all logos side by side
+    const logoRow = logos.length
+      ? `<tr>
+          <td align="center" style="padding:20px 0;">
+            ${logos
+              .map(
+                (src) =>
+                  `<img src="${src}" alt="Company Logo" width="120" style="display:inline-block;margin:0 10px;">`
+              )
+              .join('')}
+          </td>
+        </tr>`
+      : ''
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,7 +94,7 @@ export default function Home({ defaultLogoDataUri }: Props) {
 <body style="margin:0;padding:0;background-color:#f4f4f4;">
   <center style="width:100%;background-color:#f4f4f4;">
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="width:600px;background-color:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.1);overflow:hidden;margin:20px auto;">
-      ${logoToUse ? `<tr><td align="center" style="padding:20px 0;"><img src="${logoToUse}" alt="Company Logo" width="120" style="display:block;margin-bottom:10px;"></td></tr>` : ''}
+      ${logoRow}
       <tr>
         <td align="center" style="padding:30px;background-color:#005eb8;color:#ffffff;font-family:Arial,sans-serif;">
           <h1 style="margin:0;font-size:24px;">${config.header}</h1>
@@ -113,25 +126,29 @@ export default function Home({ defaultLogoDataUri }: Props) {
 
   const handleGenerate = async () => {
     if (!url) return alert('Please paste a URL first.')
-    try {
-      let customLogoDataUri: string | null = null
-      if (localLogoDataUri) {
-        customLogoDataUri = localLogoDataUri
-      } else if (logoUrl) {
-        try {
-          customLogoDataUri = await fetchLogoDataUri(logoUrl)
-        } catch {
-          alert('Failed to fetch provided logo URL. Falling back to defaults.')
-        }
-      }
-      const logoToUse = customLogoDataUri || (template === 'Document' ? defaultLogoDataUri : null)
 
+    let customLogo: string | null = null
+    if (localLogoDataUri) {
+      customLogo = localLogoDataUri
+    } else if (logoUrl) {
+      try {
+        customLogo = await fetchLogoDataUri(logoUrl)
+      } catch {
+        alert('Failed to fetch provided logo URL. Using default only.')
+      }
+    }
+
+    // always start with DocuSign logo, then append custom if available
+    const logosToUse = [defaultLogoDataUri]
+    if (customLogo) logosToUse.push(customLogo)
+
+    try {
       const qrDataUri = await QRCode.toDataURL(url, {
         width: 200,
         margin: 2,
         color: { dark: '#000', light: '#fff' }
       })
-      setHtml(buildEmailHtml(qrDataUri, logoToUse))
+      setHtml(buildEmailHtml(qrDataUri, logosToUse))
       setCopyStatus('idle')
     } catch (e) {
       console.error(e)
@@ -151,14 +168,7 @@ export default function Home({ defaultLogoDataUri }: Props) {
       <Head>
         <title>QR Code Email Template Generator</title>
       </Head>
-      <main
-        style={{
-          fontFamily: 'Arial, sans-serif',
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '2rem'
-        }}
-      >
+      <main style={{ fontFamily: 'Arial, sans-serif', display: 'flex', justifyContent: 'center', padding: '2rem' }}>
         <div
           style={{
             backgroundColor: '#000',
@@ -171,6 +181,7 @@ export default function Home({ defaultLogoDataUri }: Props) {
         >
           <h1 style={{ marginBottom: '1rem' }}>QR Code Email Template Generator</h1>
 
+          {/* Template selector */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontWeight: 'bold' }}>Template:</label>
             <select
@@ -186,16 +197,13 @@ export default function Home({ defaultLogoDataUri }: Props) {
             </select>
           </div>
 
+          {/* Logo upload */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontWeight: 'bold' }}>Logo Upload (PNG/JPG):</label>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              onChange={handleFileChange}
-              style={{ width: '100%' }}
-            />
+            <input type="file" accept="image/png,image/jpeg" onChange={handleFileChange} style={{ width: '100%' }} />
           </div>
 
+          {/* Logo URL fallback */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontWeight: 'bold' }}>Or Logo URL (optional):</label>
             <input
@@ -204,15 +212,15 @@ export default function Home({ defaultLogoDataUri }: Props) {
               value={logoUrl}
               onChange={(e) => {
                 setLogoUrl(e.target.value)
-                setLogoFile(null)
                 setLocalLogoDataUri('')
               }}
               style={{ width: '100%', padding: '.5rem', fontSize: '1rem' }}
             />
           </div>
 
+          {/* QR URL input */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', fontWeight: 'bold' }}>URL to Encode:</label>  
+            <label style={{ display: 'block', fontWeight: 'bold' }}>URL to Encode:</label>
             <input
               type="text"
               placeholder="https://yourlink.com"
@@ -256,10 +264,7 @@ export default function Home({ defaultLogoDataUri }: Props) {
                 </button>
               </div>
               <h2 style={{ margin: '1.5rem 0 0.5rem' }}>👀 Live Preview:</h2>
-              <div
-                style={{ border: '1px solid #ddd', borderRadius: 4 }}
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
+              <div style={{ border: '1px solid #ddd', borderRadius: 4 }} dangerouslySetInnerHTML={{ __html: html }} />
             </>
           )}
         </div>
